@@ -2,12 +2,14 @@ package app;
 
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
+import java.util.Scanner;
 
 public class TFTPClientNet {
 
@@ -17,11 +19,12 @@ public class TFTPClientNet {
 	 * (ERROR)
 	 */
 
-	private static final String TFTP_SERVER_IP = "192.168.1.11";
+	private static final String TFTP_SERVER_IP = "192.168.1.8";
 	private static final int TFTP_DEFAULT_PORT = 69;
 
 	// TFTP OP Code
 	private static final byte OP_RRQ = 1;
+	private static final byte OP_WRQ = 2;
 	private static final byte OP_DATAPACKET = 3;
 	private static final byte OP_ACK = 4;
 	private static final byte OP_ERROR = 5;
@@ -34,11 +37,40 @@ public class TFTPClientNet {
 	private byte[] bufferByteArray;
 	private DatagramPacket outBoundDatagramPacket;
 	private DatagramPacket inBoundDatagramPacket;
+	
+	private static boolean end = false;
 
 	public static void main(String[] args) throws IOException {
-		String fileName = "TFTP.pdf";
-		TFTPClientNet tFTPClientNet = new TFTPClientNet();
-		tFTPClientNet.get(fileName);
+		
+		TFTPClientNet tftpClient = new TFTPClientNet();
+		Scanner scan = new Scanner(System.in);
+		while(!end) {
+			System.out.println("TFTP Client");
+			System.out.println("Options:");
+			System.out.println("1 - Read Request");
+			System.out.println("2 - Write Request");
+			System.out.println("3 - Exit");
+			String option = scan.nextLine();
+			String fileName = null;
+			switch(option) {
+				case "1":
+					System.out.print("Enter File Name Requested: ");
+					fileName = scan.nextLine();
+					tftpClient.get(fileName);
+				break;
+				case "2":
+					System.out.print("Enter File Name Requested: ");
+					fileName = scan.nextLine();
+					tftpClient.put(fileName);
+				break;
+				case "3":
+					end = true;
+					System.out.println("TFTP Client Exiting...");
+				break;
+				default:
+					System.out.println("Command Not Recognized");
+			}
+		}
 	}
 
 	private void get(String fileName) throws IOException {
@@ -50,7 +82,7 @@ public class TFTPClientNet {
 		outBoundDatagramPacket = new DatagramPacket(requestByteArray, requestByteArray.length, inetAddress,
 				TFTP_DEFAULT_PORT);
 
-		// STEP 1: sending request RRQ to TFTP server fo a file
+		// STEP 1: sending request RRQ to TFTP server to a file
 		datagramSocket.send(outBoundDatagramPacket);
 
 		// STEP 2: receive file from TFTP server
@@ -58,6 +90,20 @@ public class TFTPClientNet {
 
 		// STEP 3: write file to local disc
 		writeFile(byteOutOS, fileName);
+	}
+	
+	private void put(String fileName) throws IOException{
+		inetAddress = InetAddress.getByName(TFTP_SERVER_IP);
+		datagramSocket = new DatagramSocket();
+		FileInputStream file = new FileInputStream(fileName);
+		requestByteArray = createRequest(OP_WRQ, fileName, "octet");
+		outBoundDatagramPacket = new DatagramPacket(requestByteArray, requestByteArray.length, inetAddress,
+				TFTP_DEFAULT_PORT);
+		datagramSocket.send(outBoundDatagramPacket);
+		
+		//NEEDS TO DEAL WITH
+		
+		System.out.println("test?");
 	}
 
 	private ByteArrayOutputStream receiveFile() throws IOException {
