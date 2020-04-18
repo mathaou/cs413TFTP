@@ -9,7 +9,6 @@ import java.io.OutputStream;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
-import java.util.Scanner;
 
 public class TFTPClientNet {
 
@@ -38,43 +37,8 @@ public class TFTPClientNet {
 	private DatagramPacket outBoundDatagramPacket;
 	private DatagramPacket inBoundDatagramPacket;
 	
-	private static boolean end = false;
-
-	public static void main(String[] args) throws IOException {
-		
-		TFTPClientNet tftpClient = new TFTPClientNet();
-		Scanner scan = new Scanner(System.in);
-		while(!end) {
-			System.out.println("TFTP Client");
-			System.out.println("Options:");
-			System.out.println("1 - Read Request");
-			System.out.println("2 - Write Request");
-			System.out.println("3 - Exit");
-			String option = scan.nextLine();
-			String fileName = null;
-			switch(option) {
-				case "1":
-					System.out.print("Enter File Name Requested: ");
-					fileName = scan.nextLine();
-					tftpClient.get(fileName);
-				break;
-				case "2":
-					System.out.print("Enter File Name Requested: ");
-					fileName = scan.nextLine();
-					tftpClient.put(fileName);
-				break;
-				case "3":
-					end = true;
-					System.out.println("TFTP Client Exiting...");
-				break;
-				default:
-					System.out.println("Command Not Recognized");
-			}
-		}
-	}
-
-	private void get(String fileName) throws IOException {
-
+	public void get(String fileName) throws IOException {
+		System.out.println("get");
 		// STEP0: prepare for communication
 		inetAddress = InetAddress.getByName(TFTP_SERVER_IP);
 		datagramSocket = new DatagramSocket();
@@ -92,7 +56,8 @@ public class TFTPClientNet {
 		writeFile(byteOutOS, fileName);
 	}
 	
-	private void put(String fileName) throws IOException{
+	public void put(String fileName) throws IOException{
+		System.out.println("put");
 		inetAddress = InetAddress.getByName(TFTP_SERVER_IP);
 		datagramSocket = new DatagramSocket();
 		FileInputStream file = new FileInputStream(fileName);
