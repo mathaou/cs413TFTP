@@ -88,7 +88,8 @@ public class TFTPClient {
         outBoundPacket = new DatagramPacket(request, request.length, ipAddress, DEFAULT_SERVER_PORT);
         socket.send(outBoundPacket);
         // send file to server
-        send();
+        send(); // kicks the whole shebang off
+        receive(); // final ack for the final packet
         System.out.println("Terminating connection with server.");
     }
 
@@ -119,7 +120,7 @@ public class TFTPClient {
                 sendAck(blockNum);
             } else if (code == OP_ACK && buffer[2] == 0 && buffer[3] == 0) {
                 System.out.println("Received ack!");
-                send();
+                send(); // an ack is acked by data
             }
         } while (inBoundPacket.getLength() >= DATAGRAM_MAX_SIZE - 4);
 
@@ -134,6 +135,7 @@ public class TFTPClient {
     private void send() throws IOException {
         
         if(fis.available() == 0) {
+            System.out.println("Closing...");
             writing = false;
             fis.close();
             return;
@@ -141,7 +143,7 @@ public class TFTPClient {
 
         byte[] fileBlockHeader = { 0, OP_DATA, (byte) (blockNum >> 8), (byte) (blockNum) };
         
-        System.out.printf("Sending %d%n", (int) blockNum);
+        System.out.printf("Sending %s%n", Arrays.toString(fileBlockHeader));
 
         blockNum = (short) (blockNum + 1);
 
@@ -151,7 +153,7 @@ public class TFTPClient {
             buffer = new byte[fis.available()];
         }
 
-        System.out.printf("%d bytes left in file...", fis.available());
+        System.out.printf("%d bytes left in file...%n", fis.available());
 
         fis.read(buffer);
 
