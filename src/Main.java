@@ -79,7 +79,7 @@ public class Main {
 					break;
 					case "2":
 						if (client == null) handleServerLogin(scan);
-						System.out.print("Enter File Name Requested: ");
+						System.out.print("\nEnter File Name Requested: ");
 						input = scan.nextLine();
 						client.putFile(input);
 					break;
@@ -95,7 +95,6 @@ public class Main {
 				}
 			} catch (Exception e){ 
 				e.printStackTrace(); 
-				client.handleError();
 			}
 		}
 
@@ -104,6 +103,7 @@ public class Main {
 	}
 
 	public void handleServerLogin(Scanner scan) {
+		if (client != null) client.closeSockets();
 		System.out.print("Enter server address: ");
 		input = scan.nextLine();
 		System.out.printf("Attempting to connect to %s...", input);
@@ -111,7 +111,6 @@ public class Main {
 			client = new TFTPClient(input);
 		} catch(Exception e){
 			e.printStackTrace();
-			client.handleError();
 		}
 	}
 

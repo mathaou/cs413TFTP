@@ -53,6 +53,8 @@ public class TFTPClient {
     private byte[] buffer = null;
     private byte zeroConst = 0;
 
+    private short blockNum;
+
     public TFTPClient(final String server_ip) throws UnknownHostException, SocketException {
         SERVER_IP = server_ip;
         ipAddress = InetAddress.getByName(SERVER_IP);
@@ -68,17 +70,21 @@ public class TFTPClient {
         // receive file and write to disc
         ByteArrayOutputStream inData = receive();
         writeToDisc(inData, file);
+        inData.close(); 
         System.out.println("Terminating connection with server.");
     }
 
     public void putFile(final String file) throws IOException {
+        blockNum = (short) 1;
+        // load file
+        fis = new FileInputStream(file);
         System.out.println("Beginning request to write " + file + " to server.");
         // create write request and send packet
         request = formatRequestWritePacket(OP_WRQ, file, MODE_NETASCII);
         outBoundPacket = new DatagramPacket(request, request.length, ipAddress, DEFAULT_SERVER_PORT);
         socket.send(outBoundPacket);
         // send file to server
-        send(file);
+        send();
         System.out.println("Terminating connection with server.");
     }
 
@@ -90,10 +96,11 @@ public class TFTPClient {
             socket.receive(inBoundPacket);
 
             // this block outputs the data part of the incoming stream - for testing
-            // byte[] d = inBoundPacket.getData();
-            // printByteArrayAsString(d);
+            byte[] d = inBoundPacket.getData();
+            printByteArrayAsString(d);
 
             byte code = buffer[1];
+            System.out.println(code);
             if (code == OP_ERROR) {
                 String errCode = new String(buffer, 3, 1);
                 String errMsg = new String(buffer, 4, inBoundPacket.getLength() - 4);
@@ -106,11 +113,13 @@ public class TFTPClient {
                 // start at the 4th byte and continue until the end of the packet
                 data.write(inBoundPacket.getData(), 4, inBoundPacket.getLength() - 4);
                 sendAck(blockNum);
-            } else if (code == OP_ACK) {
-                
+            } else if (code == OP_ACK && buffer[2] == 0 && buffer[3] == 0) {
+                System.out.println("Received ack!");
+                if (fis.available() == 0) fis.close();
+                else {
+                    send();
+                }
             }
-
-
         } while (inBoundPacket.getLength() >= DATAGRAM_MAX_SIZE - 4);
 
         return ret;
@@ -121,44 +130,36 @@ public class TFTPClient {
         data.writeTo(stream);
     }
 
-    private void send(String file) throws IOException {
-        // need to wait for ack before sending the next block...
-        fis = new FileInputStream(file);
+    private void send() throws IOException {
+        byte[] fileBlockHeader = { 0, OP_DATA, (byte) (blockNum >> 8), (byte) (blockNum) };
+        
+        System.out.printf("Sending %d%n", (int) blockNum);
 
-        // two bytes needed
-        short blockNum = 1;
-        do {
-            // might need to flip this depending on if little or big endian
-            byte[] fileBlockHeader = { 0, OP_DATA, (byte) blockNum, (byte) (blockNum >> 8) };
-            
-            blockNum = (short) (blockNum + 1);
+        blockNum = (short) (blockNum + 1);
 
-            if(fis.available() >= DATAGRAM_MAX_SIZE - 4) {
-                buffer = new byte[DATAGRAM_MAX_SIZE - 4];
-            } else {
-                buffer = new byte[fis.available()];
-            }
-            fis.read(buffer);
+        if(fis.available() >= DATAGRAM_MAX_SIZE - 4) {
+            buffer = new byte[DATAGRAM_MAX_SIZE - 4];
+        } else {
+            buffer = new byte[fis.available()];
+        }
 
-            printByteArrayAsString(buffer);
+        fis.read(buffer);
 
-            ByteArrayOutputStream fileBlockOS = new ByteArrayOutputStream();
+        ByteArrayOutputStream fileBlockOS = new ByteArrayOutputStream();
 
-            // concat arrays
-            fileBlockOS.write(fileBlockHeader);
-            fileBlockOS.write(buffer);
+        // concat arrays
+        fileBlockOS.write(buffer);
+        fileBlockOS.write(fileBlockHeader);
 
-            byte[] fileBlock = fileBlockOS.toByteArray();
+        byte[] fileBlock = fileBlockOS.toByteArray();
 
-            outBoundPacket = new DatagramPacket(fileBlock, fileBlock.length, ipAddress, socket.getLocalPort());
+        outBoundPacket = new DatagramPacket(fileBlock, fileBlock.length, ipAddress, socket.getLocalPort());
 
-            socket.send(outBoundPacket);
-        } while (fis.available() >= DATAGRAM_MAX_SIZE - 4);
-
-        fis.close();
+        socket.send(outBoundPacket);
+        receive();
     }
 
-    public void handleError() {
+    public void closeSockets() {
         try {
             if(socket != null) socket.close();
             if(fis != null) fis.close();
