@@ -16,6 +16,7 @@ import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.security.spec.DSAGenParameterSpec;
 import java.util.Arrays;
 import java.util.stream.Stream;
@@ -53,6 +54,8 @@ public class TFTPClient {
     private byte[] buffer = null;
     private byte zeroConst = 0;
 
+    private boolean writing = false;
+
     private short blockNum;
 
     public TFTPClient(final String server_ip) throws UnknownHostException, SocketException {
@@ -75,6 +78,7 @@ public class TFTPClient {
     }
 
     public void putFile(final String file) throws IOException {
+        writing = true;
         blockNum = (short) 1;
         // load file
         fis = new FileInputStream(file);
@@ -105,7 +109,8 @@ public class TFTPClient {
                 String errMsg = new String(buffer, 4, inBoundPacket.getLength() - 4);
                 System.err.println("ERROR: " + errCode + errMsg);
             }
-            else if (code == OP_DATA) {
+            else if (code == OP_DATA && !writing) {
+                System.out.println("DATA");
                 byte[] blockNum = {buffer[2], buffer[3] };
                 System.out.println(Arrays.toString(blockNum));
                 DataOutputStream data = new DataOutputStream(ret);
@@ -114,10 +119,7 @@ public class TFTPClient {
                 sendAck(blockNum);
             } else if (code == OP_ACK && buffer[2] == 0 && buffer[3] == 0) {
                 System.out.println("Received ack!");
-                if (fis.available() == 0) fis.close();
-                else {
-                    send();
-                }
+                send();
             }
         } while (inBoundPacket.getLength() >= DATAGRAM_MAX_SIZE - 4);
 
@@ -130,7 +132,13 @@ public class TFTPClient {
     }
 
     private void send() throws IOException {
-        // this if for sure right
+        
+        if(fis.available() == 0) {
+            writing = false;
+            fis.close();
+            return;
+        }
+
         byte[] fileBlockHeader = { 0, OP_DATA, (byte) (blockNum >> 8), (byte) (blockNum) };
         
         System.out.printf("Sending %d%n", (int) blockNum);
@@ -149,7 +157,10 @@ public class TFTPClient {
 
         ByteArrayOutputStream fileBlockOS = new ByteArrayOutputStream();
 
-        // concat arrays (not sure what order these have to be in)
+        // messing with encoding
+        // byte[] test = new String(buffer, StandardCharsets.US_ASCII).getBytes();
+
+        // concat arrays
         fileBlockOS.write(fileBlockHeader);
         fileBlockOS.write(buffer);
 
@@ -158,7 +169,8 @@ public class TFTPClient {
         outBoundPacket = new DatagramPacket(fileBlock, fileBlock.length, ipAddress, socket.getLocalPort());
 
         socket.send(outBoundPacket);
-        if (fis.available() > 0) receive();
+
+        receive();
     }
 
     public void closeSockets() {
@@ -171,6 +183,7 @@ public class TFTPClient {
         }
     }
 
+    @SuppressWarnings("unused")
     private void printByteArrayAsString(byte[] d) {
         InputStreamReader input = new InputStreamReader(
             new ByteArrayInputStream(d), Charset.forName("UTF-8"));
