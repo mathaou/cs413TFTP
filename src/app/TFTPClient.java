@@ -96,11 +96,10 @@ public class TFTPClient {
             socket.receive(inBoundPacket);
 
             // this block outputs the data part of the incoming stream - for testing
-            byte[] d = inBoundPacket.getData();
-            printByteArrayAsString(d);
+            // byte[] d = inBoundPacket.getData();
+            // printByteArrayAsString(d);
 
             byte code = buffer[1];
-            System.out.println(code);
             if (code == OP_ERROR) {
                 String errCode = new String(buffer, 3, 1);
                 String errMsg = new String(buffer, 4, inBoundPacket.getLength() - 4);
@@ -131,6 +130,7 @@ public class TFTPClient {
     }
 
     private void send() throws IOException {
+        // this if for sure right
         byte[] fileBlockHeader = { 0, OP_DATA, (byte) (blockNum >> 8), (byte) (blockNum) };
         
         System.out.printf("Sending %d%n", (int) blockNum);
@@ -143,20 +143,22 @@ public class TFTPClient {
             buffer = new byte[fis.available()];
         }
 
+        System.out.printf("%d bytes left in file...", fis.available());
+
         fis.read(buffer);
 
         ByteArrayOutputStream fileBlockOS = new ByteArrayOutputStream();
 
-        // concat arrays
-        fileBlockOS.write(buffer);
+        // concat arrays (not sure what order these have to be in)
         fileBlockOS.write(fileBlockHeader);
+        fileBlockOS.write(buffer);
 
         byte[] fileBlock = fileBlockOS.toByteArray();
 
         outBoundPacket = new DatagramPacket(fileBlock, fileBlock.length, ipAddress, socket.getLocalPort());
 
         socket.send(outBoundPacket);
-        receive();
+        if (fis.available() > 0) receive();
     }
 
     public void closeSockets() {

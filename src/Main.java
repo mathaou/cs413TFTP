@@ -56,8 +56,7 @@ public class Main {
 	public Main(){
         scan = new Scanner(System.in);
         boolean end = false;
-
-		System.out.printf("Brad and Barret were not involved in this ASCII art of you.\n\n%s\n\nCheers,\n\t-Matt\n", cichanowski);
+		System.out.printf("%s%n", cichanowski);
 
 		while(!end) {
 			System.out.println("TFTP Client");
