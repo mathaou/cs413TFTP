@@ -54,8 +54,6 @@ public class TFTPClient {
     private byte[] buffer = null;
     private byte zeroConst = 0;
 
-    private boolean writing = false;
-
     private short blockNum;
 
     public TFTPClient(final String server_ip) throws UnknownHostException, SocketException {
@@ -64,45 +62,49 @@ public class TFTPClient {
         socket = new DatagramSocket();
     }
 
+    // TODO: in both getFile and putFile we need to ask the user how they want to send their data
+    // whether it's in octet, netascii, or mail
+    // then we format the request to send
+
+    // TODO: read up on the stuff pieces we found to understand what Dr. C was talking about
+    // why do we need to handle cardinal integers?
+
     public void getFile(final String file) throws IOException {
         System.out.println("Beginning request to get " + file + " from server.");
         // create read request and send packet
-        request = formatRequestWritePacket(OP_RRQ, file, MODE_NETASCII);
+        request = formatRequestWritePacket(OP_RRQ, file, MODE_OCTET);
         outBoundPacket = new DatagramPacket(request, request.length, ipAddress, DEFAULT_SERVER_PORT);
         socket.send(outBoundPacket);
         // receive file and write to disc
-        ByteArrayOutputStream inData = receive();
+        ByteArrayOutputStream inData = receiveFile();
         writeToDisc(inData, file);
         inData.close(); 
         System.out.println("Terminating connection with server.");
     }
 
     public void putFile(final String file) throws IOException {
-        writing = true;
         blockNum = (short) 1;
         // load file
         fis = new FileInputStream(file);
         System.out.println("Beginning request to write " + file + " to server.");
         // create write request and send packet
-        request = formatRequestWritePacket(OP_WRQ, file, MODE_NETASCII);
+        request = formatRequestWritePacket(OP_WRQ, file, MODE_OCTET);
         outBoundPacket = new DatagramPacket(request, request.length, ipAddress, DEFAULT_SERVER_PORT);
         socket.send(outBoundPacket);
-        // send file to server
-        send(); // kicks the whole shebang off
-        receive(); // final ack for the final packet
+        // get ack
+        byte[] startReceive = {(byte) 0, (byte) 0};
+        if (receiveAck(startReceive)) {
+            sendFile();
+        }
         System.out.println("Terminating connection with server.");
     }
 
-    private ByteArrayOutputStream receive() throws IOException {
+    private ByteArrayOutputStream receiveFile() throws IOException {
         ret = new ByteArrayOutputStream();
         do {
             buffer = new byte[DATAGRAM_MAX_SIZE];
             inBoundPacket = new DatagramPacket(buffer, buffer.length, ipAddress, socket.getLocalPort());
             socket.receive(inBoundPacket);
-
-            // this block outputs the data part of the incoming stream - for testing
-            // byte[] d = inBoundPacket.getData();
-            // printByteArrayAsString(d);
 
             byte code = buffer[1];
             if (code == OP_ERROR) {
@@ -110,20 +112,14 @@ public class TFTPClient {
                 String errMsg = new String(buffer, 4, inBoundPacket.getLength() - 4);
                 System.err.println("ERROR: " + errCode + errMsg);
             }
-            else if (code == OP_DATA && !writing) {
-                System.out.println("DATA");
-                byte[] blockNum = {buffer[2], buffer[3] };
-                System.out.println(Arrays.toString(blockNum));
+            else if (code == OP_DATA) {
+                byte[] blockNum = {buffer[2], buffer[3]};
                 DataOutputStream data = new DataOutputStream(ret);
                 // start at the 4th byte and continue until the end of the packet
                 data.write(inBoundPacket.getData(), 4, inBoundPacket.getLength() - 4);
                 sendAck(blockNum);
-            } else if (code == OP_ACK && buffer[2] == 0 && buffer[3] == 0) {
-                System.out.println("Received ack!");
-                send(); // an ack is acked by data
             }
-        } while (inBoundPacket.getLength() >= DATAGRAM_MAX_SIZE - 4);
-
+        } while (inBoundPacket.getLength() > 512);
         return ret;
     }
 
@@ -132,11 +128,11 @@ public class TFTPClient {
         data.writeTo(stream);
     }
 
-    private void send() throws IOException {
-        
+    private void sendFile() throws IOException {
+        // TODO: Fix this to include a loop
+        // We get to this method after we receive the first ack after our write request
         if(fis.available() == 0) {
             System.out.println("Closing...");
-            writing = false;
             fis.close();
             return;
         }
@@ -171,8 +167,29 @@ public class TFTPClient {
         outBoundPacket = new DatagramPacket(fileBlock, fileBlock.length, ipAddress, socket.getLocalPort());
 
         socket.send(outBoundPacket);
+    }
 
-        receive();
+    public boolean receiveAck(byte[] expectedAck) throws IOException {
+        // pass in the expected block number we should be receiving in our ack
+        boolean receivedAck = false;
+        buffer = new byte[DATAGRAM_MAX_SIZE];
+        inBoundPacket = new DatagramPacket(buffer, buffer.length, ipAddress, socket.getLocalPort());
+        socket.receive(inBoundPacket);
+
+        byte code = buffer[1];
+        if (code == OP_ERROR) {
+            String errCode = new String(buffer, 3, 1);
+            String errMsg = new String(buffer, 4, inBoundPacket.getLength() - 4);
+            System.err.println("ERROR: " + errCode + errMsg);
+        }
+        else if (code == OP_ACK) {
+            byte[] blockNum = {buffer[2], buffer[3]};
+            System.out.println("received ack ");
+            if (Arrays.equals(blockNum, expectedAck)) {
+                receivedAck = true;
+            }
+        }
+        return receivedAck;
     }
 
     public void closeSockets() {
