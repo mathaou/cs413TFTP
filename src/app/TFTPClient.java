@@ -92,12 +92,19 @@ public class TFTPClient {
         System.out.println("Beginning request to write " + file + " to server.");
         // create write request and send packet
         request = formatRequestWritePacket(OP_WRQ, file, MODE_OCTET);
-        outBoundPacket = new DatagramPacket(request, request.length, ipAddress, DEFAULT_SERVER_PORT);
+        outBoundPacket = new DatagramPacket(request, request.length, ipAddress, 69);
+        
+        buffer = new byte[DATAGRAM_MAX_SIZE];
+        inBoundPacket = new DatagramPacket(buffer, buffer.length, ipAddress, socket.getLocalPort());
+        
         socket.send(outBoundPacket);
-        // get ack
+        
+        socket.receive(inBoundPacket); // get ack
+        
         byte[] startReceive = {(byte) 0, (byte) 0};
         if (receiveAck(startReceive)) {
-            sendFile();
+        	System.out.println("THERE PORT" + inBoundPacket.getPort());
+            sendFile(inBoundPacket.getPort());
         }
         System.out.println("Terminating connection with server.");
     }
@@ -131,7 +138,7 @@ public class TFTPClient {
         data.writeTo(stream);
     }
 
-    private void sendFile() throws IOException {
+    private void sendFile(int serverPort) throws IOException {
         boolean ackReceived;
         int retries;
         do {
@@ -165,11 +172,19 @@ public class TFTPClient {
 
             byte[] fileBlock = fileBlockOS.toByteArray();
 
-            outBoundPacket = new DatagramPacket(fileBlock, fileBlock.length, ipAddress, socket.getLocalPort());
+            outBoundPacket = new DatagramPacket(fileBlock, fileBlock.length, ipAddress, serverPort);
+            
+            buffer = new byte[DATAGRAM_MAX_SIZE];
+            inBoundPacket = new DatagramPacket(buffer, buffer.length, ipAddress, socket.getLocalPort());
             
             // send packet and wait for ack
             do {
-                socket.send(outBoundPacket);  
+                socket.send(outBoundPacket);
+                socket.receive(inBoundPacket);
+                if(receiveAck(buffer)){
+                	//HERE WE NEED TO DO WHAT WE DO WITH ACK BACK
+                }
+                System.out.println(Arrays.toString(buffer));
                 retries = TOTAL_RETRIES;
                 //ackReceived = receiveAck(byteArrayBlockNumber);
                 if (ackReceived) {
@@ -177,6 +192,7 @@ public class TFTPClient {
                 }
                 //sleep for TIMEOUT
                 retries--;
+                System.exit(0); //TEMP FINISH SO DOESN'T SPAM
             } while (!ackReceived || retries == 0);
 
         } while (fis.available() > 0);
