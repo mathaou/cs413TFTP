@@ -53,6 +53,9 @@ public class TFTPClient {
     private byte[] request = null;
     private byte[] buffer = null;
     private byte zeroConst = 0;
+    // TODO: Fix these
+    private final int TIMEOUT = 2000; // 2 seconds
+    private final int TOTAL_RETRIES = 5;
 
     private short blockNum;
 
@@ -129,44 +132,57 @@ public class TFTPClient {
     }
 
     private void sendFile() throws IOException {
-        // TODO: Fix this to include a loop
-        // We get to this method after we receive the first ack after our write request
-        if(fis.available() == 0) {
-            System.out.println("Closing...");
-            fis.close();
-            return;
-        }
-
-        byte[] fileBlockHeader = { 0, OP_DATA, (byte) (blockNum >> 8), (byte) (blockNum) };
+        boolean ackReceived;
+        int retries;
+        do {
+            ackReceived = false;
+            // I don't understand what's going on here. Might contribute to dying at 7
+            // TODO: Fix block number
+            byte[] fileBlockHeader = { 0, OP_DATA, (byte) (blockNum >> 8), (byte) (blockNum) };
         
-        System.out.printf("Sending %s%n", Arrays.toString(fileBlockHeader));
+            System.out.printf("Sending %s%n", Arrays.toString(fileBlockHeader));
 
-        blockNum = (short) (blockNum + 1);
+            blockNum = (short) (blockNum + 1);
 
-        if(fis.available() >= DATAGRAM_MAX_SIZE - 4) {
-            buffer = new byte[DATAGRAM_MAX_SIZE - 4];
-        } else {
-            buffer = new byte[fis.available()];
-        }
+            if(fis.available() >= DATAGRAM_MAX_SIZE - 4) {
+                buffer = new byte[DATAGRAM_MAX_SIZE - 4];
+            } else {
+                buffer = new byte[fis.available()];
+            }
 
-        System.out.printf("%d bytes left in file...%n", fis.available());
+            System.out.printf("%d bytes left in file...%n", fis.available());
 
-        fis.read(buffer);
+            fis.read(buffer);
 
-        ByteArrayOutputStream fileBlockOS = new ByteArrayOutputStream();
+            ByteArrayOutputStream fileBlockOS = new ByteArrayOutputStream();
 
-        // messing with encoding
-        // byte[] test = new String(buffer, StandardCharsets.US_ASCII).getBytes();
+            // messing with encoding
+            // byte[] test = new String(buffer, StandardCharsets.US_ASCII).getBytes();
 
-        // concat arrays
-        fileBlockOS.write(fileBlockHeader);
-        fileBlockOS.write(buffer);
+            // concat arrays
+            fileBlockOS.write(fileBlockHeader);
+            fileBlockOS.write(buffer);
 
-        byte[] fileBlock = fileBlockOS.toByteArray();
+            byte[] fileBlock = fileBlockOS.toByteArray();
 
-        outBoundPacket = new DatagramPacket(fileBlock, fileBlock.length, ipAddress, socket.getLocalPort());
+            outBoundPacket = new DatagramPacket(fileBlock, fileBlock.length, ipAddress, socket.getLocalPort());
+            
+            // send packet and wait for ack
+            do {
+                socket.send(outBoundPacket);  
+                retries = TOTAL_RETRIES;
+                //ackReceived = receiveAck(byteArrayBlockNumber);
+                if (ackReceived) {
+                    break;
+                }
+                //sleep for TIMEOUT
+                retries--;
+            } while (!ackReceived || retries == 0);
 
-        socket.send(outBoundPacket);
+        } while (fis.available() > 0);
+
+        System.out.println("Closing...");
+        fis.close();
     }
 
     public boolean receiveAck(byte[] expectedAck) throws IOException {
