@@ -106,7 +106,7 @@ public class Main {
 		if (client != null) client.closeSockets();
 		System.out.print("Enter server address: ");
 		input = scan.nextLine();
-		System.out.printf("Attempting to connect to %s...", input);
+		System.out.printf("Attempting to connect to %s...%n", input);
 		try {
 			client = new TFTPClient(input);
 		} catch(Exception e){

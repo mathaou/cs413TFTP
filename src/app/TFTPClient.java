@@ -96,8 +96,6 @@ public class TFTPClient {
         
         socket.send(outBoundPacket);
         
-        // socket.receive(inBoundPacket); // get ack
-        
         byte[] startReceive = {(byte) (expectedBlockNum >> 8), (byte) (expectedBlockNum)};
         if (receiveAck(startReceive)) {
         	// System.out.println("THEIR PORT: " + inBoundPacket.getPort());
@@ -124,7 +122,8 @@ public class TFTPClient {
                 DataOutputStream data = new DataOutputStream(ret);
                 // start at the 4th byte and continue until the end of the packet
                 data.write(inBoundPacket.getData(), 4, inBoundPacket.getLength() - 4);
-                System.out.println(blockNum[0] + " " + blockNum[1]);
+                
+                System.out.printf("Sending ack for packet %s...%n", Arrays.toString(blockNum));
                 sendAck(blockNum);
             }
         } while (inBoundPacket.getLength() > 512);
@@ -160,8 +159,8 @@ public class TFTPClient {
             ByteArrayOutputStream fileBlockOS = new ByteArrayOutputStream();
 
             // concat arrays
-            fileBlockOS.write(fileBlockHeader);
-            fileBlockOS.write(buffer);
+            fileBlockOS.write(fileBlockHeader); // header
+            fileBlockOS.write(buffer); // data
 
             byte[] fileBlock = fileBlockOS.toByteArray();
 
@@ -180,11 +179,13 @@ public class TFTPClient {
                     socket.send(outBoundPacket);
                     continue;
                 }
-                if (checkAck(buffer, blockNum)) {
+                if (checkAck(buffer, blockNum) && fis.available() >= DATAGRAM_MAX_SIZE - 4) {
                     ackReceived = receiveAck(new byte[] { (byte) (expectedBlockNum >> 8), (byte) (expectedBlockNum) });
                     expectedBlockNum = (short) (expectedBlockNum + 1);
                     System.out.println("Received ack: " + blockNum);
                     break;
+                } else if (fis.available() < DATAGRAM_MAX_SIZE - 4) { // less than 512 signals end of transmission
+                    ackReceived = true; // 
                 } else {
                     retries--;
                 }
