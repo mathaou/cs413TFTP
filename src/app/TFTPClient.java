@@ -92,7 +92,7 @@ public class TFTPClient {
         System.out.println("Beginning request to write " + file + " to server.");
         // create write request and send packet
         request = formatRequestWritePacket(OP_WRQ, file, MODE_OCTET);
-        outBoundPacket = new DatagramPacket(request, request.length, ipAddress, 69);
+        outBoundPacket = new DatagramPacket(request, request.length, ipAddress, DEFAULT_SERVER_PORT);
         
         buffer = new byte[DATAGRAM_MAX_SIZE];
         inBoundPacket = new DatagramPacket(buffer, buffer.length, ipAddress, socket.getLocalPort());
@@ -181,8 +181,10 @@ public class TFTPClient {
             do {
                 socket.send(outBoundPacket);
                 socket.receive(inBoundPacket);
-                if(receiveAck(buffer)){
-                	//HERE WE NEED TO DO WHAT WE DO WITH ACK BACK
+                if(checkAck(buffer)){
+                	ackReceived = true;
+                	System.out.println(blockNum);
+                	break;
                 }
                 System.out.println(Arrays.toString(buffer));
                 retries = TOTAL_RETRIES;
@@ -190,9 +192,7 @@ public class TFTPClient {
                 if (ackReceived) {
                     break;
                 }
-                //sleep for TIMEOUT
                 retries--;
-                System.exit(0); //TEMP FINISH SO DOESN'T SPAM
             } while (!ackReceived || retries == 0);
 
         } while (fis.available() > 0);
@@ -254,6 +254,11 @@ public class TFTPClient {
         byte[] ackByte = { 0, OP_ACK, num[0], num[1] };
         DatagramPacket ackPacket = new DatagramPacket(ackByte, ackByte.length, ipAddress, inBoundPacket.getPort());
         socket.send(ackPacket);
+    }
+    
+    private boolean checkAck(byte[] buffer) { //This is just used for testing to check increment of block num
+    	byte code = buffer[1];
+    	return code == OP_ACK;
     }
 
     private byte[] formatRequestWritePacket(final byte OP_CODE, final String file, final String mode) {
