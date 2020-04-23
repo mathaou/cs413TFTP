@@ -53,7 +53,7 @@ public class TFTPClient {
     private final int TIMEOUT = 2000; // 2 seconds
     private final int TOTAL_RETRIES = 5;
 
-    private short blockNum;
+    private short blockNum, expectedBlockNum;
 
     public TFTPClient(final String server_ip) throws UnknownHostException, SocketException {
         SERVER_IP = server_ip;
@@ -83,6 +83,7 @@ public class TFTPClient {
 
     public void putFile(final String file) throws IOException {
         blockNum = (short) 1;
+        expectedBlockNum = (short) 0;
         // load file
         fis = new FileInputStream(file);
         System.out.println("Beginning request to write " + file + " to server.");
@@ -95,11 +96,11 @@ public class TFTPClient {
         
         socket.send(outBoundPacket);
         
-        socket.receive(inBoundPacket); // get ack
+        // socket.receive(inBoundPacket); // get ack
         
-        byte[] startReceive = {(byte) 0, (byte) 0};
+        byte[] startReceive = {(byte) (expectedBlockNum >> 8), (byte) (expectedBlockNum)};
         if (receiveAck(startReceive)) {
-        	System.out.println("THERE PORT" + inBoundPacket.getPort());
+        	// System.out.println("THEIR PORT: " + inBoundPacket.getPort());
             sendFile(inBoundPacket.getPort());
         }
         System.out.println("Terminating connection with server.");
@@ -139,21 +140,9 @@ public class TFTPClient {
         boolean ackReceived;
         int retries;
         socket.setSoTimeout(TIMEOUT);
+
         do {
             ackReceived = false;
-            // I don't understand what's going on here. Might contribute to dying at 7
-            // TODO: Fix block number
-            // should be 
-            // 0 0
-            // 0 1
-            // 0 ...
-            // 0 127
-            // 0 -128
-            // 0 -127
-            // 0 ...
-            // 0 -1
-            // 1 0
-            // repeat
             byte[] fileBlockHeader = { 0, OP_DATA, (byte) (blockNum >> 8), (byte) (blockNum) };
         
             System.out.printf("Sending %s%n", Arrays.toString(fileBlockHeader));
@@ -169,9 +158,6 @@ public class TFTPClient {
             fis.read(buffer);
 
             ByteArrayOutputStream fileBlockOS = new ByteArrayOutputStream();
-
-            // messing with encoding
-            // byte[] test = new String(buffer, StandardCharsets.US_ASCII).getBytes();
 
             // concat arrays
             fileBlockOS.write(fileBlockHeader);
@@ -195,7 +181,8 @@ public class TFTPClient {
                     continue;
                 }
                 if (checkAck(buffer, blockNum)) {
-                    ackReceived = true;
+                    ackReceived = receiveAck(new byte[] { (byte) (expectedBlockNum >> 8), (byte) (expectedBlockNum) });
+                    expectedBlockNum = (short) (expectedBlockNum + 1);
                     System.out.println("Received ack: " + blockNum);
                     break;
                 } else {
@@ -203,7 +190,8 @@ public class TFTPClient {
                 }
             }
             if (retries == 0) {
-                System.err.println("Reached maximum retry count.");
+                System.err.println("Reached maximum retry count. General failure.");
+                return;
             }
             blockNum = (short) (blockNum + 1);
         } while (fis.available() > 0);
@@ -213,7 +201,6 @@ public class TFTPClient {
 
     public boolean receiveAck(byte[] expectedAck) throws IOException {
         // pass in the expected block number we should be receiving in our ack
-        boolean receivedAck = false;
         buffer = new byte[DATAGRAM_MAX_SIZE];
         inBoundPacket = new DatagramPacket(buffer, buffer.length, ipAddress, socket.getLocalPort());
         socket.receive(inBoundPacket);
@@ -226,12 +213,11 @@ public class TFTPClient {
         }
         else if (code == OP_ACK) {
             byte[] blockNum = {buffer[2], buffer[3]};
-            System.out.println("received ack ");
             if (Arrays.equals(blockNum, expectedAck)) {
-                receivedAck = true;
+                return true;
             }
         }
-        return receivedAck;
+        return false;
     }
 
     public void closeSockets() {
