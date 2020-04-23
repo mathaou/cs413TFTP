@@ -84,6 +84,7 @@ public class Main {
 					break;
 					case "3":
 						end = true;
+						client.closeSockets();
 					break;
 					default:
 						if(option.equals("0") && client != null){

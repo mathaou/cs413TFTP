@@ -3,7 +3,6 @@ package app;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
-import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -13,13 +12,10 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
+import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
-import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
-import java.security.spec.DSAGenParameterSpec;
 import java.util.Arrays;
-import java.util.stream.Stream;
 
 public class TFTPClient {
     // Server configurations
@@ -127,6 +123,7 @@ public class TFTPClient {
                 DataOutputStream data = new DataOutputStream(ret);
                 // start at the 4th byte and continue until the end of the packet
                 data.write(inBoundPacket.getData(), 4, inBoundPacket.getLength() - 4);
+                System.out.println(blockNum[0] + " " + blockNum[1]);
                 sendAck(blockNum);
             }
         } while (inBoundPacket.getLength() > 512);
@@ -141,15 +138,25 @@ public class TFTPClient {
     private void sendFile(int serverPort) throws IOException {
         boolean ackReceived;
         int retries;
+        socket.setSoTimeout(TIMEOUT);
         do {
             ackReceived = false;
             // I don't understand what's going on here. Might contribute to dying at 7
             // TODO: Fix block number
+            // should be 
+            // 0 0
+            // 0 1
+            // 0 ...
+            // 0 127
+            // 0 -128
+            // 0 -127
+            // 0 ...
+            // 0 -1
+            // 1 0
+            // repeat
             byte[] fileBlockHeader = { 0, OP_DATA, (byte) (blockNum >> 8), (byte) (blockNum) };
         
             System.out.printf("Sending %s%n", Arrays.toString(fileBlockHeader));
-
-            blockNum = (short) (blockNum + 1);
 
             if(fis.available() >= DATAGRAM_MAX_SIZE - 4) {
                 buffer = new byte[DATAGRAM_MAX_SIZE - 4];
@@ -176,29 +183,32 @@ public class TFTPClient {
             
             buffer = new byte[DATAGRAM_MAX_SIZE];
             inBoundPacket = new DatagramPacket(buffer, buffer.length, ipAddress, socket.getLocalPort());
-            
-            // send packet and wait for ack
-            do {
-                socket.send(outBoundPacket);
-                socket.receive(inBoundPacket);
-                if(checkAck(buffer)){
-                	ackReceived = true;
-                	System.out.println(blockNum);
-                	break;
-                }
-                System.out.println(Arrays.toString(buffer));
-                retries = TOTAL_RETRIES;
-                //ackReceived = receiveAck(byteArrayBlockNumber);
-                if (ackReceived) {
-                    break;
-                }
-                retries--;
-            } while (!ackReceived || retries == 0);
 
+            // send the packet once and instantiate the retry count
+            socket.send(outBoundPacket);
+            retries = TOTAL_RETRIES;
+            while(!ackReceived || retries == 0) {
+                try {
+                    socket.receive(inBoundPacket);
+                } catch (SocketTimeoutException e) {
+                    socket.send(outBoundPacket);
+                    continue;
+                }
+                if (checkAck(buffer, blockNum)) {
+                    ackReceived = true;
+                    System.out.println("Received ack: " + blockNum);
+                    break;
+                } else {
+                    retries--;
+                }
+            }
+            if (retries == 0) {
+                System.err.println("Reached maximum retry count.");
+            }
+            blockNum = (short) (blockNum + 1);
         } while (fis.available() > 0);
 
         System.out.println("Closing...");
-        fis.close();
     }
 
     public boolean receiveAck(byte[] expectedAck) throws IOException {
@@ -256,7 +266,7 @@ public class TFTPClient {
         socket.send(ackPacket);
     }
     
-    private boolean checkAck(byte[] buffer) { //This is just used for testing to check increment of block num
+    private boolean checkAck(byte[] buffer, Short blockNumber) { //This is just used for testing to check increment of block num
     	byte code = buffer[1];
     	return code == OP_ACK;
     }
