@@ -61,10 +61,6 @@ public class TFTPClient {
         socket = new DatagramSocket();
     }
 
-    // TODO: in both getFile and putFile we need to ask the user how they want to send their data
-    // whether it's in octet, netascii, or mail
-    // then we format the request to send
-
     // TODO: read up on the stuff pieces we found to understand what Dr. C was talking about
     // why do we need to handle cardinal integers?
 
@@ -115,10 +111,22 @@ public class TFTPClient {
         socket.send(outBoundPacket);
 
         byte[] startReceive = {(byte) (expectedBlockNum >> 8), (byte) (expectedBlockNum)};
-        if (receiveAck(startReceive)) {
-        	// System.out.println("THEIR PORT: " + inBoundPacket.getPort());
-            sendFile(inBoundPacket.getPort());
+        boolean received = true;
+        int tries = 5;
+        do {
+            try {
+                received = receiveAck(startReceive);
+            } catch (SocketTimeoutException e) {
+                socket.send(outBoundPacket);
+                tries--;
+            }
+        } while (!received || tries > 0);
+
+        if(tries == 0) {
+            System.err.println("Reached maximum retry count. General failure.");
+            return;
         }
+        sendFile(inBoundPacket.getPort());
         System.out.println("Terminating connection with server.");
     }
 
@@ -141,15 +149,13 @@ public class TFTPClient {
                 	socket.send(outBoundPacket);
                 	tries--;
                 }
-            }
-            while(tries > 0 && !ack);
+            } while(tries > 0 && !ack);
+
             if(tries == 0) {
             	System.err.println("Reached maximum retry count. General failure.");
             	return null;
             }
             
-            
-
             byte code = buffer[1];
             if (code == OP_ERROR) {
                 String errCode = new String(buffer, 3, 1);
