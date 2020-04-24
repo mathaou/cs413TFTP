@@ -190,15 +190,14 @@ public class TFTPClient {
             retries = TOTAL_RETRIES;
             while(!ackReceived || retries == 0) {
                 try {
-                    socket.receive(inBoundPacket);
+                    ackReceived = receiveAck(new byte[] { (byte) (expectedBlockNum >> 8), (byte) (expectedBlockNum) });
                 } catch (SocketTimeoutException e) {
                     socket.send(outBoundPacket);
                     continue;
                 }
                 if (checkAck(buffer, blockNum) && fis.available() >= DATAGRAM_MAX_SIZE - 4) {
-                    ackReceived = receiveAck(new byte[] { (byte) (expectedBlockNum >> 8), (byte) (expectedBlockNum) });
-                    expectedBlockNum = (short) (expectedBlockNum + 1);
                     System.out.println("Received ack: " + blockNum);
+                    expectedBlockNum = (short) (expectedBlockNum + 1);
                     break;
                 } else if (fis.available() < DATAGRAM_MAX_SIZE - 4) { // less than 512 signals end of transmission
                     ackReceived = true; // 
