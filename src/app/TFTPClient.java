@@ -113,10 +113,22 @@ public class TFTPClient {
         socket.send(outBoundPacket);
 
         byte[] startReceive = {(byte) (expectedBlockNum >> 8), (byte) (expectedBlockNum)};
-        if (receiveAck(startReceive)) {
-        	// System.out.println("THEIR PORT: " + inBoundPacket.getPort());
-            sendFile(inBoundPacket.getPort());
+        ackReceived = false;
+        retries = TOTAL_RETRIES;
+        do {
+            try {
+                ackReceived = receiveAck(startReceive);
+            } catch (SocketTimeoutException e) {
+                socket.send(outBoundPacket);
+                retries--;
+            }
+        } while (!ackReceived || retries > 0);
+
+        if(retries == 0) {
+            System.err.println("Reached maximum retry count. General failure.");
+            return;
         }
+        sendFile(inBoundPacket.getPort());
         System.out.println("Terminating connection with server.");
     }
 
@@ -147,8 +159,6 @@ public class TFTPClient {
             	return null;
             }
             
-            
-
             byte code = buffer[1];
             if (code == OP_ERROR) {
                 String errCode = new String(buffer, 3, 1);
