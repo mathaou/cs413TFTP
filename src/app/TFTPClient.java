@@ -122,7 +122,7 @@ public class TFTPClient {
                 socket.send(outBoundPacket);
                 retries--;
             }
-        } while (!ackReceived || retries > 0);
+        } while (!ackReceived && retries > 0);
 
         if(retries == 0) {
             System.err.println("Reached maximum retry count. General failure.");
@@ -259,7 +259,7 @@ public class TFTPClient {
             System.err.println("ERROR: " + errCode + errMsg);
         }
         else if (code == OP_ACK) {
-            byte[] blockNum = {buffer[2], buffer[3]};
+            byte[] blockNum = {buffer[2], buffer[3]};;
             if (Arrays.equals(blockNum, expectedAck)) {
                 return true;
             }
