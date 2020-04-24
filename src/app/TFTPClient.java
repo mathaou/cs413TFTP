@@ -85,13 +85,15 @@ public class TFTPClient {
     }
 
     public void getFile(final String file) throws IOException {
+    	socket.setSoTimeout(TIMEOUT);
         System.out.println("Beginning request to get " + file + " from server.");
         // create read request and send packet
         request = formatRequestWritePacket(OP_RRQ, file, getDataType());
         outBoundPacket = new DatagramPacket(request, request.length, ipAddress, DEFAULT_SERVER_PORT);
         socket.send(outBoundPacket);
         // receive file and write to disc
-        ByteArrayOutputStream inData = receiveFile();
+        ByteArrayOutputStream inData = receiveFile(outBoundPacket); //Sends the header packet
+        if(inData == null) return; //Will return null if timed out 5 times
         writeToDisc(inData, file);
         inData.close(); 
         System.out.println("Terminating connection with server.");
@@ -120,12 +122,33 @@ public class TFTPClient {
         System.out.println("Terminating connection with server.");
     }
 
-    private ByteArrayOutputStream receiveFile() throws IOException {
+    private ByteArrayOutputStream receiveFile(DatagramPacket outBoundPacket) throws IOException {
         ret = new ByteArrayOutputStream();
         do {
             buffer = new byte[DATAGRAM_MAX_SIZE];
             inBoundPacket = new DatagramPacket(buffer, buffer.length, ipAddress, socket.getLocalPort());
-            socket.receive(inBoundPacket);
+            
+            //Start timeout checking
+            int tries = TOTAL_RETRIES;
+            boolean ack = false;
+            do {
+            	try {
+                	socket.receive(inBoundPacket);//Gets packet
+                	ack = true;
+                }
+                catch(IOException e) {
+                	System.out.println("Attempted to resend packet...");//Timed out
+                	socket.send(outBoundPacket);
+                	tries--;
+                }
+            }
+            while(tries > 0 && !ack);
+            if(tries == 0) {
+            	System.err.println("Reached maximum retry count. General failure.");
+            	return null;
+            }
+            
+            
 
             byte code = buffer[1];
             if (code == OP_ERROR) {
