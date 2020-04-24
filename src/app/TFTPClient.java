@@ -68,10 +68,26 @@ public class TFTPClient {
     // TODO: read up on the stuff pieces we found to understand what Dr. C was talking about
     // why do we need to handle cardinal integers?
 
+    public String getDataType() {
+        System.out.println("\n\t1. Octet\n\t2. Netascii");
+        System.out.print("Choose data type: ");
+        String response = Main.scan.nextLine();
+
+        switch(response){
+            case "1":
+                return MODE_OCTET;
+            case "2":
+                return MODE_NETASCII;
+            default:
+                System.out.println("Not a valid selection.");
+                return null;
+        }
+    }
+
     public void getFile(final String file) throws IOException {
         System.out.println("Beginning request to get " + file + " from server.");
         // create read request and send packet
-        request = formatRequestWritePacket(OP_RRQ, file, MODE_OCTET);
+        request = formatRequestWritePacket(OP_RRQ, file, getDataType());
         outBoundPacket = new DatagramPacket(request, request.length, ipAddress, DEFAULT_SERVER_PORT);
         socket.send(outBoundPacket);
         // receive file and write to disc
@@ -88,7 +104,7 @@ public class TFTPClient {
         fis = new FileInputStream(file);
         System.out.println("Beginning request to write " + file + " to server.");
         // create write request and send packet
-        request = formatRequestWritePacket(OP_WRQ, file, MODE_OCTET);
+        request = formatRequestWritePacket(OP_WRQ, file, getDataType());
         outBoundPacket = new DatagramPacket(request, request.length, ipAddress, DEFAULT_SERVER_PORT);
         
         buffer = new byte[DATAGRAM_MAX_SIZE];

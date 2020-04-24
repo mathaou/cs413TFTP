@@ -1,7 +1,8 @@
-import java.io.IOException;
-import java.util.Scanner;
+package app;
 
-import app.TFTPClient;
+import java.io.IOException;
+import java.util.NoSuchElementException;
+import java.util.Scanner;
 
 public class Main {
 
@@ -45,7 +46,7 @@ public class Main {
     "\n,;coddlodoxkxlccoxkOOOko::lxxxkxddoloxkkxxxkkkxxxl;;oddddxd:,ldoodo:,;ldxc. "+
     "\n;,;:clccclxkd:,,coxxxxdc,,;loodollc:ldxdoodxkkxxxl,;oddddxd:,ldlodo;':odl,. ";
 
-	private Scanner scan = null;
+	public static Scanner scan = null;
 	private TFTPClient client = null;
 	private String input = null;
 
@@ -67,17 +68,17 @@ public class Main {
 			System.out.println("\t1 - Read Request");
 			System.out.println("\t2 - Write Request");
 			System.out.println("\t3 - Exit");
-			String option = scan.nextLine();
 			try {
+				String option = scan.nextLine();
 				switch(option) {
 					case "1":
-						if (client == null) handleServerLogin(scan);
+						if (client == null) handleServerLogin();
 						System.out.print("\nEnter File Name Requested: ");
 						input = scan.nextLine();
 						client.getFile(input); 
 					break;
 					case "2":
-						if (client == null) handleServerLogin(scan);
+						if (client == null) handleServerLogin();
 						System.out.print("\nEnter File Name Requested: ");
 						input = scan.nextLine();
 						client.putFile(input);
@@ -88,11 +89,13 @@ public class Main {
 					break;
 					default:
 						if(option.equals("0") && client != null){
-							handleServerLogin(scan);
+							handleServerLogin();
 						} else {
 							System.out.println("Command not recognized.");
 						}
 				}
+			} catch (NoSuchElementException e) { // huuuuh
+				continue; 
 			} catch (Exception e){ 
 				e.printStackTrace(); 
 			}
@@ -102,7 +105,7 @@ public class Main {
         scan.close();
 	}
 
-	public void handleServerLogin(Scanner scan) {
+	public void handleServerLogin() {
 		if (client != null) client.closeSockets();
 		System.out.print("Enter server address: ");
 		input = scan.nextLine();
