@@ -111,7 +111,7 @@ public class TFTPClient {
         inBoundPacket = new DatagramPacket(buffer, buffer.length, ipAddress, socket.getLocalPort());
         
         socket.send(outBoundPacket);
-        
+
         byte[] startReceive = {(byte) (expectedBlockNum >> 8), (byte) (expectedBlockNum)};
         if (receiveAck(startReceive)) {
         	// System.out.println("THEIR PORT: " + inBoundPacket.getPort());
