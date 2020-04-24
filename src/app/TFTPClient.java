@@ -40,16 +40,20 @@ public class TFTPClient {
     private DatagramPacket outBoundPacket = null;
     private DatagramPacket inBoundPacket = null;
 
+    // Streams for data
     private ByteArrayOutputStream ret = null;
     private OutputStream stream = null;
     private FileInputStream fis = null;
 
     // other
-    private final static int DATAGRAM_MAX_SIZE = 516;
     private byte[] request = null;
     private byte[] buffer = null;
     private byte zeroConst = 0;
-    // TODO: Fix these
+    private int retries;
+    private boolean ackReceived;
+
+    // final others
+    private final static int DATAGRAM_MAX_SIZE = 516;
     private final int TIMEOUT = 2000; // 2 seconds
     private final int TOTAL_RETRIES = 5;
 
@@ -59,39 +63,35 @@ public class TFTPClient {
         SERVER_IP = server_ip;
         ipAddress = InetAddress.getByName(SERVER_IP);
         socket = new DatagramSocket();
+        socket.setSoTimeout(TIMEOUT);
     }
 
-    // TODO: in both getFile and putFile we need to ask the user how they want to send their data
-    // whether it's in octet, netascii, or mail
-    // then we format the request to send
-
-    // TODO: read up on the stuff pieces we found to understand what Dr. C was talking about
-    // why do we need to handle cardinal integers?
-
-    public String getDataType() {
-        System.out.println("\n\t1. Octet\n\t2. Netascii");
-        System.out.print("Choose data type: ");
-        String response = Main.scan.nextLine();
-
-        switch(response){
-            case "1":
-                return MODE_OCTET;
-            case "2":
-                return MODE_NETASCII;
-            default:
-                System.out.println("Not a valid selection.");
-                return null;
+    private String getDataType() {
+        while (true) {
+            System.out.println("\n\t1. Octet\n\t2. Netascii");
+            System.out.print("Choose data type: ");
+            String response = Main.scan.nextLine();
+            switch(response){
+                case "1":
+                    return MODE_OCTET;
+                case "2":
+                    return MODE_NETASCII;
+                default:
+                    System.out.println("Not a valid selection.");
+                    System.out.println("Please make another selection.");
+            }
         }
     }
 
     public void getFile(final String file) throws IOException {
-        System.out.println("Beginning request to get " + file + " from server.");
         // create read request and send packet
         request = formatRequestWritePacket(OP_RRQ, file, getDataType());
+        System.out.println("Beginning request to get " + file + " from server.");
         outBoundPacket = new DatagramPacket(request, request.length, ipAddress, DEFAULT_SERVER_PORT);
         socket.send(outBoundPacket);
         // receive file and write to disc
-        ByteArrayOutputStream inData = receiveFile();
+        ByteArrayOutputStream inData = receiveFile(outBoundPacket); //Sends the header packet
+        if(inData == null) return; //Will return null if timed out 5 times
         writeToDisc(inData, file);
         inData.close(); 
         System.out.println("Terminating connection with server.");
@@ -102,9 +102,9 @@ public class TFTPClient {
         expectedBlockNum = (short) 0;
         // load file
         fis = new FileInputStream(file);
-        System.out.println("Beginning request to write " + file + " to server.");
         // create write request and send packet
         request = formatRequestWritePacket(OP_WRQ, file, getDataType());
+        System.out.println("Beginning request to write " + file + " to server.");
         outBoundPacket = new DatagramPacket(request, request.length, ipAddress, DEFAULT_SERVER_PORT);
         
         buffer = new byte[DATAGRAM_MAX_SIZE];
@@ -120,12 +120,34 @@ public class TFTPClient {
         System.out.println("Terminating connection with server.");
     }
 
-    private ByteArrayOutputStream receiveFile() throws IOException {
+    private ByteArrayOutputStream receiveFile(DatagramPacket outBoundPacket) throws IOException {
         ret = new ByteArrayOutputStream();
+        DatagramPacket sendPack = outBoundPacket;
         do {
             buffer = new byte[DATAGRAM_MAX_SIZE];
             inBoundPacket = new DatagramPacket(buffer, buffer.length, ipAddress, socket.getLocalPort());
-            socket.receive(inBoundPacket);
+            
+            //Start timeout checking
+            retries = TOTAL_RETRIES;
+            ackReceived = false;
+            do {
+            	try {
+                	socket.receive(inBoundPacket);//Gets packet
+                	ackReceived = true;
+                }
+                catch(IOException e) {
+                	System.out.println("Attempted to resend packet...");//Timed out
+                	socket.send(outBoundPacket);
+                	retries--;
+                }
+            } while(retries > 0 && !ackReceived);
+
+            if(retries == 0) {
+            	System.err.println("Reached maximum retry count. General failure.");
+            	return null;
+            }
+            
+            
 
             byte code = buffer[1];
             if (code == OP_ERROR) {
@@ -140,7 +162,8 @@ public class TFTPClient {
                 data.write(inBoundPacket.getData(), 4, inBoundPacket.getLength() - 4);
                 
                 System.out.printf("Sending ack for packet %s...%n", Arrays.toString(blockNum));
-                sendAck(blockNum);
+                sendPack = formatAck(blockNum);
+                socket.send(sendPack);
             }
         } while (inBoundPacket.getLength() > 512);
         return ret;
@@ -152,9 +175,7 @@ public class TFTPClient {
     }
 
     private void sendFile(int serverPort) throws IOException {
-        boolean ackReceived;
         int retries;
-        socket.setSoTimeout(TIMEOUT);
 
         do {
             ackReceived = false;
@@ -262,10 +283,10 @@ public class TFTPClient {
         System.out.println(str.toString());
     }
 
-    private void sendAck(byte[] num) throws IOException {
+    private DatagramPacket formatAck(byte[] num) throws IOException {
         byte[] ackByte = { 0, OP_ACK, num[0], num[1] };
         DatagramPacket ackPacket = new DatagramPacket(ackByte, ackByte.length, ipAddress, inBoundPacket.getPort());
-        socket.send(ackPacket);
+        return ackPacket;
     }
     
     private boolean checkAck(byte[] buffer, Short blockNumber) { //This is just used for testing to check increment of block num
